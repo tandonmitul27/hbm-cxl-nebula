@@ -1,0 +1,59 @@
+{
+ "DeepSeek-V2-Lite": {
+  "hidden": 2048,
+  "n_heads": 16,
+  "n_kv_heads": 16,
+  "head_dim": 128,
+  "vocab": 102400,
+  "tie": false,
+  "mla": true,
+  "kv_lora": 512,
+  "q_lora": 0,
+  "v_head": 128,
+  "qk_nope": 128,
+  "qk_rope": 64
+ },
+ "Mixtral-8x7B": {
+  "hidden": 4096,
+  "n_heads": 32,
+  "n_kv_heads": 8,
+  "head_dim": 128,
+  "vocab": 32000,
+  "tie": false,
+  "mla": false,
+  "kv_lora": 0,
+  "q_lora": 0,
+  "v_head": 128,
+  "qk_nope": 0,
+  "qk_rope": 0
+ },
+ "OLMoE-1B-7B": {
+  "hidden": 2048,
+  "n_heads": 16,
+  "n_kv_heads": 16,
+  "head_dim": 128,
+  "vocab": 50304,
+  "tie": false,
+  "mla": false,
+  "kv_lora": 0,
+  "q_lora": 0,
+  "v_head": 128,
+  "qk_nope": 0,
+  "qk_rope": 0
+ },
+ "Phi-3.5-MoE": {
+  "hidden": 4096,
+  "n_heads": 32,
+  "n_kv_heads": 8,
+  "head_dim": 128,
+  "vocab": 32064,
+  "tie": false,
+  "mla": false,
+  "kv_lora": 0,
+  "q_lora": 0,
+  "v_head": 128,
+  "qk_nope": 0,
+  "qk_rope": 0
+ },
+ "_note": "Model shape only. @tandonmitul27 -- extracted from the HuggingFace config of the named checkpoint; carries NO routing data and no run metadata. Consumed by mapping/address_map.py to lay out the static HBM/CXL address map."
+}

@@ -1,0 +1,52 @@
+{
+ "_note": "Model shape only. @tandonmitul27 -- extracted from the HuggingFace config of the named checkpoint; carries NO routing data and no run metadata. Consumed by mapping/address_map.py to lay out the static HBM/CXL address map.",
+ "geometry": {
+  "dense_layers": [
+   0
+  ],
+  "expert_bytes_fp16": 17301504,
+  "expert_bytes_fp8": 8650752,
+  "expert_fetch_ms_at_60GBs_fp16": 0.28835839999999996,
+  "expert_ff": 1408,
+  "expert_params": 8650752,
+  "hidden_size": 2048,
+  "model_id": "deepseek-ai/DeepSeek-V2-Lite",
+  "model_type": "deepseek_v2",
+  "moe_layers": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26
+  ],
+  "num_experts": 64,
+  "num_layers": 27,
+  "num_shared_experts": 2,
+  "routed_expert_bytes_total_fp16": 28789702656,
+  "shared_ff": 1408,
+  "shared_params_per_layer": 17301504,
+  "top_k": 6,
+  "vocab_size": 102400
+ }
+}

@@ -1,0 +1,11 @@
+# @tandonmitul27 -- gem5 and DRAMsim3 are fetched and built by setup.sh,
+# never committed: the built tree is ~5 GB, and vendoring upstream source
+# would hide our changes (which live in patches/ and configs/ instead).
+/gem5/
+
+# run outputs
+/out/
+*.pyc
+__pycache__/
+m5out/
+stats.txt

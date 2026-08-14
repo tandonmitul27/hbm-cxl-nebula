@@ -1,0 +1,27 @@
+Fix missing <cstdint> include in the DRAMsim3 wrapper (GCC 13+ build fix).
+
+    @tandonmitul27
+
+WHY THIS IS NEEDED
+    gem5 25.1's dramsim3_wrapper.hh uses fixed-width integer types
+    (uint64_t, uint8_t) but never includes <cstdint>.  Older libstdc++
+    pulled it in transitively through <string>/<functional>; GCC 13
+    tightened its transitive includes, so the file no longer compiles.
+    Without this patch `scons build/NULL/gem5.opt` fails with
+    "'uint64_t' does not name a type" as soon as DRAMsim3 is enabled.
+
+    Upstream-agnostic: adding a missing include is always correct, and
+    the patch is a no-op on toolchains that already provided it.
+
+diff --git a/src/mem/dramsim3_wrapper.hh b/src/mem/dramsim3_wrapper.hh
+index 41b1088..81bf0c0 100644
+--- a/src/mem/dramsim3_wrapper.hh
++++ b/src/mem/dramsim3_wrapper.hh
+@@ -44,6 +44,7 @@
+ #ifndef __MEM_DRAMSIM3_WRAPPER_HH__
+ #define __MEM_DRAMSIM3_WRAPPER_HH__
+ 
++#include <cstdint>
+ #include <functional>
+ #include <string>
+ 
