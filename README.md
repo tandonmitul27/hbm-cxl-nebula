@@ -11,6 +11,11 @@ Every number the model produces traces back to a published standard, a
 vendor datasheet, or a measurement made by this repository against one of
 them. `make check` re-runs all of those comparisons in one command.
 
+Being managed collectively by:
+→ Mitul Tandon (tandonmitul27)
+→ Aryan Chaudhary (aryanchaudhary29)
+→ Shreesh Shrinivas Nagral (bronco2910)
+
 ---
 
 ## The system
