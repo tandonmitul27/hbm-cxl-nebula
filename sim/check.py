@@ -146,14 +146,19 @@ def check_bandwidth(fast: bool):
     o = gem5("smoke_hbm.py", "bw1", "--config", "HBM3_16Gb_x64_1ch",
              "--mem-size", "1GB", "--window-ns", "20000", "--direct")
     bw = stat_sum(o, "bwRead::total") / 1e9
-    check("HBM3 single channel sequential", bw, 40.0, 51.2, "GB/s",
-          "88% of 51.2 peak measured")
+    # @tandonmitul27 -- band tightened with the idle-gap fix. The old band
+    # (40.0-51.2) PASSED the diluted 44.24 GB/s figure: a check calibrated
+    # from the same flawed measurement cannot detect the flaw.
+    check("HBM3 single channel sequential", bw, 44.5, 51.2, "GB/s",
+          "90% of 51.2 peak measured (46.04)")
     if fast:
         print("  [skip] full-stack runs (--fast)")
         return
     for cfg, n, lo, hi, ref in (
-            ("HBM3_16Gb_x64_1ch", 16, 640, 780, "H100 datasheet 670 GB/s/stack"),
-            ("HBM3e_24Gb_x64_1ch", 16, 930, 1130, "84% of 1229 peak measured")):
+            ("HBM3_16Gb_x64_1ch", 16, 700, 790, "736.6 measured; H100 "
+             "datasheet implies 670 GB/s/stack at shipping clocks"),
+            ("HBM3e_24Gb_x64_1ch", 16, 1020, 1150, "1072.1 measured, "
+             "87% of the 1229 spec peak")):
         o = gem5("smoke_hbm.py", f"stack-{cfg}", "--config", cfg,
                  "--mem-size", "2GB", "--window-ns", "20000",
                  "--pairs", str(n), "--sys-ghz", "8.0")
@@ -177,8 +182,13 @@ def check_cxl():
     check("CXL-FPGA added latency", lat["fpga"] - lat["local"],
           245 * 0.88, 245 * 1.12, "ns", "silicon: 375-130 = 245 ns")
 
+    # @tandonmitul27 -- --bus-ghz 6.5 makes the link stage width 4 B x
+    # 6.5 GHz = EXACTLY the 26.0 GB/s nominal (64 B / 4 B = 16 whole
+    # cycles). At --bus-ghz 4.0 the stage is width 6, so a 64 B packet
+    # needs ceil(64/6) = 11 whole cycles -> a 23.3 GB/s CEILING, and the
+    # check measures the crossbar instead of the device.
     o = gem5("cxl_tier.py", "cxl-floe", "--backend-channels", "16",
-             "--num-gen", "16", "--bus-ghz", "4.0", "--link-gbps", "26")
+             "--num-gen", "16", "--bus-ghz", "6.5", "--link-gbps", "26")
     bw = stat_sum(o, "bwRead::total") / 1e9
     ms = 352.3e6 / (bw * 1e9) * 1e3
     check("FloE Mixtral expert over PCIe4 x16", ms, 12.0, 18.0, "ms",
@@ -189,7 +199,7 @@ def check_cxl():
     # so 48-entry FIFOs cap at ~86 GB/s (71%) -- a real finding, documented
     # in docs/CALIBRATION.md.  This point certifies the deep-buffer configuration.
     o = gem5("cxl_tier.py", "cxl3-x16", "--backend-channels", "8",
-             "--num-gen", "16", "--bus-ghz", "16.0", "--link-gbps", "121",
+             "--num-gen", "16", "--bus-ghz", "15.125", "--link-gbps", "121",
              "--fifo", "128")
     bw = stat_sum(o, "bwRead::total") / 1e9
     check("CXL 3.0 x16 effective bandwidth", bw, 95.0, 121.0, "GB/s",

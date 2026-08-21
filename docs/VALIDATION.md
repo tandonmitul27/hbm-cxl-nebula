@@ -12,12 +12,12 @@ a published standard, a vendor datasheet, or a peer-reviewed measurement.
 
 | Check | Ours | Reference |
 |---|---|---|
-| HBM3 stack bandwidth | 707.8 GB/s | 670 GB/s implied by the H100 datasheet |
-| HBM3E stack bandwidth | 1027.3 GB/s | 84 % of the 1228.8 spec peak |
+| HBM3 stack bandwidth | 736.6 GB/s | 670 GB/s implied by the H100 datasheet (90 % of the 819.2 spec peak) |
+| HBM3E stack bandwidth | 1072.1 GB/s | 87 % of the 1228.8 spec peak |
 | CXL ASIC added latency | 159.7 ns | 154 ns, real CXL ASIC |
 | CXL FPGA added latency | 248.5 ns | 245 ns, real CXL FPGA |
-| CXL 3.0 x16 bandwidth | 105.6 GB/s | 87 % of 121 spec |
-| Mixtral expert over PCIe4 | 15.0 ms | FloE, ~15 ms |
+| CXL 3.0 x16 bandwidth | 106.6 GB/s | 88 % of 121 spec, exact-nominal stage |
+| Mixtral expert over PCIe4 | ~13.9 ms | FloE ~15 ms (gap is host software FloE includes) |
 | HBM3 / HBM3E energy | 3.97 pJ/bit | O'Connor, MICRO'17 |
 | DDR5 energy | 11.8 pJ/bit | DDR/GDDR device class |
 | Row-miss penalty | 33.2 / 34.2 ns | configured tRP + tRCD |

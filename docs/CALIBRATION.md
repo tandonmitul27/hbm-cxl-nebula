@@ -35,7 +35,7 @@ that adding channels stops helping.
 
 `--direct` removes the fabric entirely; `--pairs N` builds N independent
 generator↔controller pairs. Per-channel bandwidth then scales **exactly**
-linearly: 45.3 GB/s × 16 = 725 GB/s.
+linearly: 46.0 GB/s × 16 = 736.6 GB/s.
 
 Related: several generators over one address space march in lockstep and
 hammer the same channel simultaneously, which is indistinguishable from poor
@@ -83,7 +83,7 @@ standard's tables while every nanosecond value matches.
 
 ### Validation
 
-707.8 GB/s per stack, against 670 GB/s per stack implied by the H100 SXM5
+736.6 GB/s per stack, against 670 GB/s per stack implied by the H100 SXM5
 datasheet (3350 GB/s ÷ 5 stacks). Shipping parts clock HBM below the top JEDEC
 bin, so measuring slightly above the datasheet figure at the top bin is the
 expected direction.
@@ -129,20 +129,32 @@ so they cancel in the ratio.
 
 ### CXL 3.0 needs deeper buffering
 
-Effective bandwidth through the full path: PCIe4 x16 23.5 GB/s (90 % of 26),
-CXL2 x16 50.7 (80 % of 63) — both with the silicon-validated 48-entry FIFOs.
+Effective bandwidth through the full path, measured at exact-nominal link
+stages: PCIe4 x16 25.3 GB/s (97 % of 26), CXL2 x16 50.7 (80 % of 63).
 
-At CXL3 x16 the same 48 entries cap throughput at ~86 GB/s (71 %):
+Device buffering sets a Little's-law ceiling of its own:
+
+```
+eff_link = min(link rate, 8 bridges x FIFO entries x 64 B / RTT)
+```
+
+At CXL3 x16 the silicon-validated 48 entries bind:
 
 ```
 outstanding needed = bandwidth × round-trip ÷ line size
                    = 121 GB/s × ~280 ns ÷ 64 B  ≈  530 requests
 ```
 
-far beyond 8 bridges × 48. With 128-entry FIFOs the link reaches 105.6 GB/s
-(87 %), matching the lower rates' efficiency. No shipping CXL 3.0 expander
+far beyond 8 bridges × 48. With 128-entry FIFOs the link reaches 106.6 GB/s
+(88 %), matching the lower rates' efficiency. No shipping CXL 3.0 expander
 exists to validate the deeper figure against, so any CXL 3.0 result must state
 the buffering assumption.
+
+Note the cap depends on the traffic pattern. The ~86 GB/s (71 %) figure often
+quoted for 48-entry FIFOs is a **sustained-mix** measurement; large sequential
+expert fetches on the same buffers reach ~101 GB/s (84 %), because a shallower
+window queues less and turns over faster (RTT ~242 ns rather than the
+deep-FIFO ~280 ns). State which pattern a CXL3 number refers to.
 
 Two related harness notes: the link crossbar's whole-cycle packet occupancy
 quantises bandwidth, so fast links need a fast `--bus-ghz` for the quantum to

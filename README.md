@@ -33,7 +33,7 @@ that same GPU to a Type-3 memory expander. One hop, no CPU in the path.
             ┌┴─────────────┐   ┌──────┴──────────────────────┐
             │ HBM3 x5      │   │ CXL Type-3 expander         │
             │ 16 ch x 64 b │   │  bridge 50 + proto 12/15 ns │
-            │ 707.8 GB/s   │   │  8 x DDR5-6400 = 204.8 GB/s │
+            │ 736.6 GB/s   │   │  8 x DDR5-6400 = 204.8 GB/s │
             │ per stack    │   │  backend > link, link binds │
             └──────────────┘   └─────────────────────────────┘
               NEAR TIER               FAR TIER

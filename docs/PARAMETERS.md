@@ -19,11 +19,11 @@ is in [CALIBRATION.md](CALIBRATION.md).
 | Banks | 2 pseudo-ch × 4 BG × 4 banks | JESD238A §3.1.2 |
 | Data rate | 6.4 Gbps/pin (HBM3) | JESD238A Table 92 top bin |
 | Peak, derived | 819.2 GB/s per stack | 64 b × 6.4 Gbps × 16 ÷ 8 |
-| **Measured** | **707.8 GB/s per stack** | this repo, `make bw-stack` |
+| **Measured** | **736.6 GB/s per stack** | this repo, `make bw-stack` |
 | Array timings | Ramulator2 JESD238-cited preset | vendor-representative¹ |
 | tFAW / tRRD | halved vs channel level | JESD238A Table 3 scopes them **per pseudo-channel** |
 | Voltages | VDD 1.1 V | JESD238A Table 70 |
-| HBM3E rate | 9.6 Gbps/pin → 1027.3 GB/s measured | vendor material; timings held from HBM3² |
+| HBM3E rate | 9.6 Gbps/pin → 1072.1 GB/s measured | vendor material; timings held from HBM3² |
 
 ¹ JESD238A deliberately does not fix array timing *values* — it says outright
 that tRAS is "the analog value from the vendor datasheet". A
@@ -56,14 +56,27 @@ LLC-miss path, while ours is memory-port latency.
 
 | Link | Nominal | Effective (measured) | Note |
 |---|---|---|---|
-| PCIe 4.0 x16 | 26 GB/s | 23.5 (90 %) | FloE comparison point |
+| PCIe 4.0 x16 | 26 GB/s | 25.3 (97 %) | FloE comparison point |
 | CXL 2.0 x16 | 63 GB/s | 50.7 (80 %) | PCIe 5.0 electricals; headline config |
-| CXL 3.0 x16 | 121 GB/s | 105.6 (87 %) | PCIe 6.0; **requires 128-entry FIFOs** |
+| CXL 3.0 x16 | 121 GB/s | 106.6 (88 %) | PCIe 6.0; **requires 128-entry FIFOs** |
+
+**Measure links at an exact-nominal stage.** The link is a single-port XBar
+of `width = round(rate / clock)` bytes, and a 64 B packet occupies
+`ceil(64 / width)` WHOLE cycles — so unless `width` divides 64 exactly, the
+harness measures itself rather than the device. Use `--bus-ghz 6.5` for
+PCIe4 (width 4) and `--bus-ghz 15.125` for CXL3 (width 8). At the stock
+4 GHz, PCIe4 caps at 23.3 GB/s and CXL3 at 128 GB/s — the latter *above*
+the FLIT-corrected nominal, which lets traffic appear faster than the link
+can physically run. CXL2 is unaffected (width 16 divides 64).
 
 CXL 3.0 needs deeper device buffering than any validated silicon: outstanding
 requests scale as bandwidth × round-trip, so 121 GB/s × ~280 ns ÷ 64 B ≈ 530
-in flight. With the silicon-validated 48-entry FIFOs the link caps at ~86 GB/s
-(71 %). Quote CXL 3.0 results with that assumption stated.
+in flight. With the silicon-validated 48-entry FIFOs the link caps at
+~101 GB/s (84 %) for large sequential expert fetches, and ~86 GB/s (71 %)
+for a sustained mix — the cap is `8 x entries x 64 B / RTT`, and a shallower
+window queues less, so its RTT is ~242 ns rather than the deep-FIFO ~280 ns.
+Quote CXL 3.0 results with both the buffering assumption and the traffic
+pattern stated.
 
 ---
 

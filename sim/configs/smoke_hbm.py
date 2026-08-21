@@ -59,8 +59,16 @@ ap.add_argument("--config", default="HBM3_16Gb_x64_1ch",
 ap.add_argument("--mem-size", default="1GB")
 ap.add_argument("--fetch-bytes", type=int, default=12 * 1024 * 1024,
                 help="burst span; default = one OLMoE expert (12 MiB)")
-ap.add_argument("--idle-ns", type=int, default=1000,
-                help="idle gap between bursts, standing in for layer compute")
+# @tandonmitul27 -- default changed 1000 -> 0.
+# gem5 reports bwRead::total as bytes / TOTAL SIMULATED TIME, so any idle
+# gap inside the run lands in the denominator and DILUTES the reported
+# bandwidth. With the old default (one 20 us burst + 1 us idle) every
+# bandwidth figure was low by 20/21 = 4.8%. The gap is only meaningful for
+# multi-burst duty-cycle experiments (--bursts > 1); for a bandwidth
+# measurement it must be zero.
+ap.add_argument("--idle-ns", type=int, default=0,
+                help="idle gap between bursts (duty-cycle experiments only; "
+                     "NONZERO VALUES DILUTE THE REPORTED BANDWIDTH)")
 ap.add_argument("--bursts", type=int, default=1)
 ap.add_argument("--window-ns", type=int, default=20_000,
                 help="saturating read window per burst")
