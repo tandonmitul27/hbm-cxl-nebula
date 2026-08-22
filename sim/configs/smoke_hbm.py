@@ -1,46 +1,19 @@
-"""Near-tier (HBM) harness: PyTrafficGen -> DRAMsim3, no CPU.
+"""Calibration harness: PyTrafficGen -> DRAMsim3, no CPU.
 
-===========================================================================
- @tandonmitul27  --  AUTHORED FILE (new; nothing upstream does this)
-===========================================================================
+Grounds the assumptions the rest of the methodology rests on:
 
-WHY THIS FILE EXISTS
-    Every HBM number the project quotes -- bandwidth, row-miss latency,
-    pJ/bit -- is produced here.  gem5 ships example scripts for DRAM
-    testing, but none of them (a) drive DRAMsim3 with the traffic shape
-    an MoE expert fetch actually has, (b) let you build a full HBM stack
-    out of independent per-channel controllers, or (c) expose the fabric,
-    interleave and queue-depth knobs the measurement depends on.  Without
-    this harness the device configs in configs/dramsim3/ would be
-    unvalidated text.
+  1. gem5 NULL + DRAMsim3 runs and reports sane bandwidth
+  2. createLinear reproduces an expert fetch (a contiguous sequential sweep)
+  3. createIdle consumes simulated time, which is what lets a trace express
+     "layer n computes for X ns while layer n+1 prefetches"
+  4. whether per-channel bandwidth actually scales linearly (--num-inst)
 
-WHAT IT ESTABLISHES
-    1. gem5 NULL + DRAMsim3 runs and reports sane bandwidth
-    2. createLinear reproduces an expert fetch (contiguous sequential
-       sweep) -- the access pattern weight streaming actually generates
-    3. per-channel bandwidth scales linearly (--pairs), which is what
-       licenses quoting a stack figure as 16 x a channel figure
-    4. row-miss penalty matches the configured tRP + tRCD, which is the
-       check that the .ini timings are really in force
-
-THE KNOB THAT MATTERS MOST (--direct / --pairs)
-    A single crossbar in front of a whole stack silently costs ~16x of
-    the bandwidth: gem5's XBar `width` is PER PORT, and one shared
-    arbitration layer serialises every channel.  --direct removes the
-    fabric; --pairs N builds N independent generator<->controller pairs.
-    Anything that puts one XBar in front of a stack is measuring the
-    crossbar, not the memory.  See docs/CALIBRATION.md.
-
-USAGE -- run from the gem5 root (paths below are relative to it)
-    build/NULL/gem5.opt ../sim/configs/smoke_hbm.py \
-        --config HBM3_16Gb_x64_1ch --direct                  # one channel
-    build/NULL/gem5.opt ../sim/configs/smoke_hbm.py \
-        --config HBM3_16Gb_x64_1ch --pairs 16 --sys-ghz 8.0  # full stack
-    build/NULL/gem5.opt ../sim/configs/smoke_hbm.py \
-        --config HBM3_16Gb_x64_1ch --direct \
-        --max-outstanding 1 --random                         # row-miss lat
-    `make bw-stack` / `make row-miss` wrap the common ones.
-===========================================================================
+Examples, run from the gem5 root:
+    build/NULL/gem5.opt ../sim/configs/smoke_hbm.py --config HBM3_16Gb_x64_1ch --direct
+    build/NULL/gem5.opt ../sim/configs/smoke_hbm.py --config HBM3_16Gb_x64_1ch \
+        --num-inst 4 --xbar-width 256
+    build/NULL/gem5.opt ../sim/configs/smoke_hbm.py --config HBM3_16Gb_x64_1ch \
+        --direct --max-outstanding 1 --random      # row-miss latency
 """
 
 import argparse
@@ -53,22 +26,24 @@ from m5.objects import (
 )
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--config", default="HBM3_16Gb_x64_1ch",
-                help="DRAMsim3 config name under configs/ (see "
-                     "configs/dramsim3/ in this repo)")
+ap.add_argument("--config", default="HBM2_8Gb_x128",
+                help="DRAMsim3 config name under configs/")
 ap.add_argument("--mem-size", default="1GB")
 ap.add_argument("--fetch-bytes", type=int, default=12 * 1024 * 1024,
                 help="burst span; default = one OLMoE expert (12 MiB)")
 # @tandonmitul27 -- default changed 1000 -> 0.
 # gem5 reports bwRead::total as bytes / TOTAL SIMULATED TIME, so any idle
 # gap inside the run lands in the denominator and DILUTES the reported
-# bandwidth. With the old default (one 20 us burst + 1 us idle) every
-# bandwidth figure was low by 20/21 = 4.8%. The gap is only meaningful for
+# bandwidth.  With the old default (one 20 us burst + 1 us idle) every
+# bandwidth number was low by 20/21 = 4.8%: the HBM3 stack read 707.8 GB/s
+# where the device actually sustains 736.6.  The gap is only meaningful for
 # multi-burst duty-cycle experiments (--bursts > 1); for a bandwidth
-# measurement it must be zero.
+# measurement it must be zero.  Confirmed against the moe_replay
+# cross-check, which independently implies 739.6 GB/s (0.4% agreement).
 ap.add_argument("--idle-ns", type=int, default=0,
                 help="idle gap between bursts (duty-cycle experiments only; "
-                     "NONZERO VALUES DILUTE THE REPORTED BANDWIDTH)")
+                     "NONZERO VALUES DILUTE THE REPORTED BANDWIDTH because "
+                     "gem5 divides by total simulated time)")
 ap.add_argument("--bursts", type=int, default=1)
 ap.add_argument("--window-ns", type=int, default=20_000,
                 help="saturating read window per burst")
@@ -190,7 +165,7 @@ PS_PER_NS = 1000
 
 def workload(gen, gi):
     if args.replicate_example:
-        # Verbatim traffic from gem5's configs/example/dramsys.py -- separates
+        # Verbatim traffic from gem5's own configs/example/dramsys.py -- separates
         # "our parameters are wrong" from "our wiring is wrong".
         return [
             gen.createLinear(10000000, 0, 16777216, 64, 500, 1500, 65, 0),

@@ -1,0 +1,29 @@
+diff --git a/src/mem/dramsim3.cc b/src/mem/dramsim3.cc
+index c07a32a..62f2f44 100644
+--- a/src/mem/dramsim3.cc
++++ b/src/mem/dramsim3.cc
+@@ -196,7 +196,23 @@ DRAMsim3::recvTimingReq(PacketPtr pkt)
+ 
+     // if we cannot accept we need to send a retry once progress can
+     // be made
+-    bool can_accept = nbrOutstanding() < wrapper.queueSize();
++    //
++    // The aggregate counter alone is NOT sufficient flow control for mixed
++    // read/write traffic.  DRAMsim3 keeps a separate read_queue_ and
++    // write_buffer_ per channel, each of capacity trans_queue_size, while
++    // queueSize() reports that single capacity and nbrOutstanding() sums
++    // both types.  Worse, a write is responded to (and dropped from
++    // nbrOutstandingWrites) as soon as gem5 has serviced it, but DRAMsim3
++    // holds it in write_buffer_ until a watermark drain -- so the counter
++    // systematically under-reports write-buffer occupancy.  The result is
++    // that gem5 believes there is room, calls enqueue(), and DRAMsim3's own
++    // assert(ok) fires.  Read-only traffic never trips this (an outstanding
++    // read is held until its response is sent, which is strictly longer than
++    // DRAMsim3 holds it, making the aggregate check conservative), which is
++    // why this only appears once a config issues writes.  Ask DRAMsim3
++    // directly for the queue this packet would actually enter.
++    bool can_accept = nbrOutstanding() < wrapper.queueSize() &&
++                      wrapper.canAccept(pkt->getAddr(), pkt->isWrite());
+ 
+     // keep track of the transaction
+     if (pkt->isRead()) {

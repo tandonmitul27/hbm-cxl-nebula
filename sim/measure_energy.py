@@ -1,38 +1,4 @@
-"""Memory-side energy in pJ/bit, measured rather than assumed.
-
-===========================================================================
- @tandonmitul27  --  AUTHORED FILE (new)
-===========================================================================
-
-WHY THIS FILE EXISTS
-    gem5 does not surface DRAMsim3's energy statistics at all.  DRAMsim3
-    computes them and writes them to its own dramsim3.json when the
-    wrapper is destroyed -- into the DRAMSIM directory, NOT the gem5
-    output directory, which is why they are easy to miss entirely.
-    This script runs a configuration, finds that file, applies the unit
-    correction below, and reports pJ/bit: the unit published DRAM energy
-    figures are quoted in, and therefore the only unit in which our
-    numbers can be checked against the literature.
-
-UNITS -- the most important thing in this file
-    DRAMsim3's energy stats are V * mA * CYCLES, not picojoules.  The
-    energy increments carry timing in clock cycles and nothing in the
-    energy path ever multiplies by tCK (only average_power is
-    unit-correct, because the cycles cancel there).  True pJ =
-    reported * tCK_ns.
-    At the stock DDR4 tCK = 0.63 ns the discrepancy is small enough to
-    overlook; at our HBM3 tCK = 0.3125 ns it is 3.2x.  This script is
-    therefore the only supported way to read energy out of this repo.
-
-USAGE
-    python sim/measure_energy.py --config HBM3_16Gb_x64_1ch
-    python sim/measure_energy.py --config HBM3_16Gb_x64_1ch \
-                                 --config DDR5_6400_4Gb_x8
-    make energy
-===========================================================================
-
-Original notes follow.
----------------------------------------------------------------------------
+"""Memory-side energy, measured rather than assumed.
 
 DRAMsim3 already computes energy the standard way -- IDD currents x VDD x time
 in each state (activate, column access, refresh, standby).  gem5 does not
@@ -64,8 +30,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-GEM5 = ROOT / "gem5"          # created by setup.sh at the repo root
+GEM5 = HERE / "gem5"
 DRAMSIM = GEM5 / "ext" / "dramsim3" / "DRAMsim3"
 STATS = DRAMSIM / "dramsim3.json"
 
@@ -73,13 +38,13 @@ ENV = dict(os.environ)
 ENV["LD_LIBRARY_PATH"] = (f"{Path.home()}/miniconda3/lib:{DRAMSIM}:"
                           + ENV.get("LD_LIBRARY_PATH", ""))
 
-# UNITS: DRAMsim3's energy stats are V * mA * CYCLES, not pJ.  Its energy
-# increments (configuration.cc InitPowerParams) carry timing in clock cycles
-# and no tCK multiplication happens anywhere in the energy path -- only
-# average_power is unit-correct (mW), because the cycles cancel there.
+# UNIT TRAP: DRAMsim3's energy stats are V * mA * CYCLES, not pJ.  Its
+# energy increments (configuration.cc InitPowerParams) carry timing in clock
+# cycles and no tCK multiplication happens anywhere in the energy path --
+# only average_power is unit-correct (mW), because the cycles cancel there.
 # True energy in pJ = reported * tCK_ns.  At the stock DDR4 tCK=0.63 or
-# HBM2's 1.0 this is a benign scale; at our HBM3 tCK=0.3125 it is 3.2x.
-# Everything below converts to pJ via the config's own tCK.
+# HBM2's 1.0 this is a benign scale; at our HBM3 tCK=0.3125 it is a 3.2x
+# error.  Everything below converts to pJ via the config's own tCK.
 ENERGY_KEYS = ["act_energy", "read_energy", "write_energy", "ref_energy",
                "refb_energy"]
 STANDBY_KEYS = ["act_stb_energy", "pre_stb_energy", "sref_energy"]

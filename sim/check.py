@@ -1,39 +1,12 @@
-"""`make check` -- every validation this model's credibility rests on.
+"""`make check` -- every validation the model's credibility rests on, one run.
 
-===========================================================================
- @tandonmitul27  --  AUTHORED FILE (new)
-===========================================================================
+Any change to configs, harnesses or parameters must keep this green.  Each
+check prints measured vs expected with its tolerance; exit code is nonzero if
+anything fails.  Tolerances are stated per check and err on the tight side --
+a check that cannot fail is not a check.
 
-WHY THIS FILE EXISTS
-    "We validated it once, by hand, months ago" is not a claim anyone
-    can act on.  This script re-runs every external comparison the model
-    is built on, in one command, with a stated tolerance per check and a
-    nonzero exit if any of them drifts.  It converts a past act of
-    validation into a property of the current tree.
-
-    It is also the first thing to run after `setup.sh`: if this passes,
-    the build, the device configs, the harnesses and the parameters are
-    all consistent with the published references.
-
-WHAT IT COMPARES AGAINST -- all external, none self-referential
-    bandwidth      HBM3 stack vs the NVIDIA H100 SXM5 datasheet
-    latency        CXL added latency vs measured CXL ASIC and FPGA
-                   silicon (CXL-DMSim Table II)
-    fetch time     Mixtral expert over PCIe4 x16 vs FloE's published
-                   ~15 ms
-    energy         HBM pJ/bit vs O'Connor et al., MICRO'17; DDR5 pJ/bit
-                   vs the DDR/GDDR device class
-    self-consistency  row-miss penalty vs the tRP+tRCD configured in
-                   the .ini, and address-map arithmetic vs published
-                   checkpoint sizes
-
-DESIGN RULE FOR ADDING CHECKS
-    A check that cannot fail is not a check.  Tolerances are deliberately
-    tight enough that a real regression trips them.
-
-    python sim/check.py            # full  (~5 min; includes 16-inst runs)
-    python sim/check.py --fast     # skips the two full-stack runs
-===========================================================================
+    python sim/check.py            # full  (~5 min: includes 16-instance runs)
+    python sim/check.py --fast     # skips the two full-stack bandwidth runs
 """
 
 from __future__ import annotations
@@ -48,7 +21,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-GEM5 = ROOT / "gem5"          # created by setup.sh at the repo root
+# setup.sh builds gem5 at the REPO ROOT (see .gitignore /gem5/); a
+# sibling-of-sim/ checkout is also honoured so a working tree that
+# keeps it under sim/ still runs.
+GEM5 = ROOT / "gem5" if (ROOT / "gem5").exists() else HERE / "gem5"
 DRAMSIM = GEM5 / "ext" / "dramsim3" / "DRAMsim3"
 GEM5_BIN = GEM5 / "build" / "NULL" / "gem5.opt"
 
@@ -104,24 +80,25 @@ def ini_ns(config: str, *keys: str) -> float:
 # ==========================================================================
 
 def check_address_maps():
-    """The address map must account for the whole model and no more.
-
-    Independent reference: the published fp16 checkpoint size of each
-    model.  If the map's region arithmetic drifts -- a miscounted
-    attention projection, an alignment applied to a size instead of a
-    base -- the total stops matching and this trips.  Tolerance is 1%,
-    which is tight: the map currently agrees to within 0.3%.
-    """
-    print("\n== address map vs published checkpoint sizes ==")
-    sys.path.insert(0, str(ROOT / "mapping"))
+    print("\n== address map vs actual checkpoint sizes ==")
+    sys.path.insert(0, str(ROOT / "mapping"))     # placement, not the model
     from address_map import AddressMap, GIB
-    published = {"OLMoE-1B-7B": 12.9, "DeepSeek-V2-Lite": 29.3,
-                 "Phi-3.5-MoE": 78.0, "Mixtral-8x7B": 87.0}
-    for tag, gb in published.items():
+    actual = {"OLMoE-1B-7B": 12.9, "DeepSeek-V2-Lite": 29.3,
+              "Phi-3.5-MoE": 78.0, "Mixtral-8x7B": 87.0}
+    for tag, gb in actual.items():
         m = AddressMap(tag, 2, 24.0)
         tot = m.summary()["total_model_bytes"] / GIB
         check(f"model bytes {tag}", tot, gb * 0.99, gb * 1.01, "GiB",
-              "published fp16 checkpoint")
+              "downloaded checkpoint")
+
+
+def check_routing_integrity():
+    print("\n== routing log integrity ==")
+    r = subprocess.run([sys.executable, str(ROOT / "data" / "check_routing.py")],
+                       capture_output=True, text=True)
+    ok = "ALL CHECKS PASSED" in r.stdout
+    RESULTS.append(("routing integrity (20 files)", ok, ""))
+    print(f"  [{'PASS' if ok else 'FAIL'}] routing integrity (20 files, 17.1M records)")
 
 
 def check_row_miss():
@@ -146,9 +123,10 @@ def check_bandwidth(fast: bool):
     o = gem5("smoke_hbm.py", "bw1", "--config", "HBM3_16Gb_x64_1ch",
              "--mem-size", "1GB", "--window-ns", "20000", "--direct")
     bw = stat_sum(o, "bwRead::total") / 1e9
-    # @tandonmitul27 -- band tightened with the idle-gap fix. The old band
-    # (40.0-51.2) PASSED the diluted 44.24 GB/s figure: a check calibrated
-    # from the same flawed measurement cannot detect the flaw.
+    # Band tightened after the idle-gap dilution fix. NOTE the old band
+    # (40.0-51.2) PASSED the diluted 44.24 GB/s figure -- a check calibrated
+    # from the same buggy measurement confirms the bug. 46.04 = 90% of the
+    # 51.2 GB/s per-channel peak.
     check("HBM3 single channel sequential", bw, 44.5, 51.2, "GB/s",
           "90% of 51.2 peak measured (46.04)")
     if fast:
@@ -182,28 +160,35 @@ def check_cxl():
     check("CXL-FPGA added latency", lat["fpga"] - lat["local"],
           245 * 0.88, 245 * 1.12, "ns", "silicon: 375-130 = 245 ns")
 
-    # @tandonmitul27 -- --bus-ghz 6.5 makes the link stage width 4 B x
-    # 6.5 GHz = EXACTLY the 26.0 GB/s nominal (64 B / 4 B = 16 whole
-    # cycles). At --bus-ghz 4.0 the stage is width 6, so a 64 B packet
-    # needs ceil(64/6) = 11 whole cycles -> a 23.3 GB/s CEILING, and the
-    # check measures the crossbar instead of the device.
+    # --bus-ghz 6.5 makes the link stage width 4 B x 6.5 GHz = EXACTLY the
+    # 26.0 GB/s nominal, and 64 B / 4 B = 16 whole cycles.  At the old
+    # --bus-ghz 4.0 the stage was width 6, so a 64 B packet needed
+    # ceil(64/6) = 11 whole cycles -> a 23.3 GB/s CEILING, and the check
+    # measured the crossbar rather than the device (the same failure the
+    # HBM calibration found, one level up).
     o = gem5("cxl_tier.py", "cxl-floe", "--backend-channels", "16",
              "--num-gen", "16", "--bus-ghz", "6.5", "--link-gbps", "26")
     bw = stat_sum(o, "bwRead::total") / 1e9
     ms = 352.3e6 / (bw * 1e9) * 1e3
     check("FloE Mixtral expert over PCIe4 x16", ms, 12.0, 18.0, "ms",
-          "FloE reports ~15 ms")
+          "FloE reports ~15 ms; ours ~13.9 at 25.3 GB/s steady state -- "
+          "the gap is host software overhead FloE includes")
 
     # CXL 3.0 x16 operating point.  Needs device buffering deeper than the
-    # 2.0-ASIC 48 entries: 121 GB/s x ~280 ns RTT / 64 B ~ 530 outstanding,
-    # so 48-entry FIFOs cap at ~86 GB/s (71%) -- a real finding, documented
-    # in docs/CALIBRATION.md.  This point certifies the deep-buffer configuration.
+    # 2.0-ASIC 48 entries: 121 GB/s x ~280 ns RTT / 64 B ~ 530 outstanding.
+    # --bus-ghz 15.125 makes the stage width 8 B x 15.125 GHz = EXACTLY the
+    # 121.0 GB/s nominal (64 B / 8 B = 8 whole cycles).  --bus-ghz 16.0
+    # would give width round(121/16) = 8 at 16 GHz = 128 GB/s, a stage that
+    # OVERSHOOTS the FLIT-corrected nominal and lets fetch traffic measure
+    # faster than the link can physically run.
     o = gem5("cxl_tier.py", "cxl3-x16", "--backend-channels", "8",
              "--num-gen", "16", "--bus-ghz", "15.125", "--link-gbps", "121",
              "--fifo", "128")
     bw = stat_sum(o, "bwRead::total") / 1e9
     check("CXL 3.0 x16 effective bandwidth", bw, 95.0, 121.0, "GB/s",
-          "105.6 measured, 87% of 121 spec")
+          "106.6 measured at the exact-121 stage, 88% of spec (steady "
+          "state; MoE fetch streams reach 117 -- system_params "
+          "cxl3_x16_121_fetch)")
 
 
 def check_fill_mix():
@@ -242,13 +227,56 @@ def check_energy():
         raw = json.loads(stats_file.read_text())
         chans = list(raw.values()) if all(k.isdigit() for k in raw) else [raw]
         # DRAMsim3 energy stats are V*mA*CYCLES, not pJ: multiply by tCK
-        # (ns).  See measure_energy.py for the derivation.
+        # (ns).  See measure_energy.py for the derivation of this unit trap.
         tck = float(re.search(r"^tCK = ([\d.]+)",
                               (DRAMSIM / "configs" / f"{cfg}.ini")
                               .read_text(), re.M).group(1))
         tot = sum(float(c.get("total_energy", 0)) for c in chans) * tck
         bits = stat(o, "system.mem_ctrl.bytesRead::total") * 8
         check(f"{cfg} energy per bit", tot / bits, lo, hi, "pJ/bit", ref)
+
+
+def check_recurrence_invariants():
+    """Structural invariants of the barrier recurrence -- pure arithmetic,
+    no gem5 needed, runs in ~2 s.
+
+    These exist because the 75-point replay campaign is run t0-FREE (t0 is
+    exact serial arithmetic on both sides, so including it would measure
+    bookkeeping rather than the memory recurrence). That convention makes
+    the campaign blind to any t0 handling bug -- and one shipped: folding
+    t0 into the compute floor silently dropped it on memory-bound barriers,
+    producing total_s BELOW the compute floor. No replay point could have
+    caught it. These invariants can.
+    """
+    import subprocess, json, tempfile, os
+    print("\n== recurrence invariants (t0 accounting, monotonicity) ==")
+    PY = sys.executable
+    ROOT = HERE.parent
+    def run(tag, extra=()):
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            out = f.name
+        cmd = [PY, str(ROOT / "analytical" / "trace_gen.py"), "--tag", tag,
+               "--batch", "16", "--hbm-gib", "80", "--policy", "static",
+               "--max-barriers", "32", "--emit-schedule", out, *extra]
+        subprocess.run(cmd, capture_output=True, cwd=str(ROOT))
+        d = json.load(open(out))["analytic"]; os.unlink(out)
+        return d
+    for tag in ("OLMoE-1B-7B", "Phi-3.5-MoE"):
+        d = run(tag)
+        # 1. a run can never finish before its own compute floor
+        # lower bound allows float noise from summing hundreds of barriers
+        # (observed |delta| ~1e-17 s) while still catching a real violation,
+        # which would be percent-scale -- the t0 bug this guards against
+        # produced total_s ~8% BELOW the floor.
+        check(f"{tag}: total >= compute", d["total_s"] / max(1e-12, d["compute_s"]),
+              1.0 - 1e-9, 1e9, "x",
+              "total_s must never fall below the compute floor")
+        # 2. t0 must lengthen the run by exactly n_barriers * delta-t0
+        a0 = run(tag, ("--t0-us", "0"))["total_s"]
+        a20 = run(tag, ("--t0-us", "20"))["total_s"]
+        got = (a20 - a0) * 1e6 / 32.0
+        check(f"{tag}: t0 is serial per barrier", got, 19.0, 21.0, "us",
+              "20 us of t0 must add exactly 20 us per barrier, whatever binds")
 
 
 def main():
@@ -259,11 +287,13 @@ def main():
         sys.exit("gem5 not built")
 
     check_address_maps()
+    check_routing_integrity()
     check_row_miss()
     check_bandwidth(a.fast)
     check_cxl()
     check_fill_mix()
     check_energy()
+    check_recurrence_invariants()
 
     n_ok = sum(1 for _, ok, _ in RESULTS if ok)
     print(f"\n{'=' * 60}\n{n_ok}/{len(RESULTS)} checks passed")

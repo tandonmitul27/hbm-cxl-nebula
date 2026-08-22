@@ -1,0 +1,172 @@
+{
+ "DeepSeek-V2-Lite": [
+  {
+   "batch": 1,
+   "file": "b1_p512_g64.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 64,
+   "rows": 89856
+  },
+  {
+   "batch": 4,
+   "file": "b4_p512_g64.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 64,
+   "rows": 359424
+  },
+  {
+   "batch": 16,
+   "file": "b16_p512_g64.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 64,
+   "rows": 1437696
+  },
+  {
+   "batch": 64,
+   "file": "b64_p256_g64.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 64,
+   "rows": 3194880
+  }
+ ],
+ "Mixtral-8x7B": [
+  {
+   "batch": 1,
+   "file": "b1_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 18432
+  },
+  {
+   "batch": 4,
+   "file": "b4_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 73728
+  },
+  {
+   "batch": 16,
+   "file": "b16_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 294912
+  },
+  {
+   "batch": 64,
+   "file": "b64_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 1179648
+  }
+ ],
+ "OLMoE-1B-7B": [
+  {
+   "batch": 1,
+   "file": "b1_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 81920
+  },
+  {
+   "batch": 4,
+   "file": "b4_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 327680
+  },
+  {
+   "batch": 16,
+   "file": "b16_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 1310720
+  },
+  {
+   "batch": 64,
+   "file": "b64_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 5242880
+  }
+ ],
+ "Phi-3.5-MoE": [
+  {
+   "batch": 1,
+   "file": "b1_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 18432
+  },
+  {
+   "batch": 4,
+   "file": "b4_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 73728
+  },
+  {
+   "batch": 16,
+   "file": "b16_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 294912
+  },
+  {
+   "batch": 64,
+   "file": "b64_p256_g32.parquet",
+   "ok": true,
+   "prompt_len": 256,
+   "gen_len": 32,
+   "rows": 1179648
+  }
+ ],
+ "Qwen2.5-3B-dense": [
+  {
+   "batch": 1,
+   "file": "b1_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 23040
+  },
+  {
+   "batch": 4,
+   "file": "b4_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 92160
+  },
+  {
+   "batch": 16,
+   "file": "b16_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 368640
+  },
+  {
+   "batch": 64,
+   "file": "b64_p512_g128.parquet",
+   "ok": true,
+   "prompt_len": 512,
+   "gen_len": 128,
+   "rows": 1474560
+  }
+ ]
+}

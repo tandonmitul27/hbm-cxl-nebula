@@ -1,24 +1,5 @@
 """Single source of truth for hardware parameters, with provenance.
 
-===========================================================================
- @tandonmitul27  --  AUTHORED FILE (new)
-===========================================================================
-
-WHY THIS FILE EXISTS
-    A memory-system study is only as trustworthy as the numbers fed into
-    it, and those numbers otherwise scatter across simulator configs,
-    shell commands and prose.  This module is the one place every
-    hardware constant lives, and each carries a `source` and a
-    `confidence` so a reader can tell -- without asking anyone -- which
-    figures come from a standard, which from a vendor datasheet, which
-    we measured, and which are still estimates.
-
-        python sim/system_params.py     # prints the whole table
-
-    The ESTIMATE entries are deliberately collected at the bottom, in
-    NEEDS_SOURCE, so an unsourced number cannot quietly reach a result.
-===========================================================================
-
 System modelled (per project clarification): the **GPU is the CXL host**.
 
     GPU  ---- on-package ----  HBM        local memory
@@ -34,7 +15,7 @@ Every entry carries `source` and `confidence`:
 
     spec       arithmetic from a published standard (PCIe/CXL/JEDEC); exact
     datasheet  vendor-published figure
-    measured   measured by us in this harness (see docs/VALIDATION.md)
+    measured   measured by us in this harness (see README.md)
     derived    computed from the above; formula given
     ESTIMATE   not sourced -- must be verified before use in the report
 
@@ -85,22 +66,54 @@ LINK = {
 # (protocol path + expander backend included).
 LINK_EFFICIENCY = {
     "pcie4_x16_26": Param(
-        23.5, "GB/s", "measured: FloE check, 90%", "measured"),
+        23.5, "GB/s", "measured: steady state, 90%", "measured",
+        "SUPERSEDED for MoE fetch traffic by pcie4_x16_26_fetch. The 90% "
+        "figure was measured at a link stage of width 6 x 4 GHz = 23.3 "
+        "GB/s, i.e. AT the harness ceiling, not the device limit: 64 B / "
+        "6 B/cycle = 11 whole cycles per packet. Re-measured at an exact "
+        "26.0 GB/s stage (width 4 x 6.5 GHz) the steady-state rate is "
+        "25.33 GB/s (97.4%)."),
+    "pcie4_x16_26_fetch": Param(
+        24.9, "GB/s", "measured: moe_replay fetch streams, n=3 models, "
+        "95.7%", "measured",
+        "Fitted by per-point bisection on the barrier recurrence against "
+        "gem5 replays at an exact-26.0 GB/s link stage: implied 24.81-"
+        "24.94 across OLMoE/Phi/Mixtral, stdev 0.07. Ratios at 25.0: "
+        "1.002-1.007. FloE cross-check: a 336 MiB Mixtral expert fetches "
+        "in 14.1 ms here vs FloE's ~15 ms on real hardware -- the ~6% gap "
+        "is host software overhead FloE includes and we do not, so the "
+        "check now reads 'within 10% of FloE', not '15.0 vs 15'."),
     "cxl2_x16_63": Param(
         50.7, "GB/s", "measured: DDR5-6400 backend, 80%", "measured",
         "CXL-DMSim reports 82-83% of local DDR bandwidth for its ASIC "
         "part; different denominator, similar figure"),
     "cxl3_x16_121": Param(
-        105.6, "GB/s", "measured with 128-entry device FIFOs, 87%",
+        105.6, "GB/s", "measured, steady state, 128-entry device FIFOs, 87%",
         "measured",
         "REQUIRES deeper device buffering than the silicon-validated "
         "CXL 2.0 ASIC's 48 entries: 121 GB/s x ~280 ns RTT / 64 B ~ 530 "
         "outstanding; with 48-entry FIFOs the link caps at ~86 GB/s "
         "(71%). No shipping CXL 3.0 expander exists to validate against; "
         "state the buffering assumption whenever this point is used. "
-        "PATTERN-DEPENDENT: this 105.6 figure is a steady-state mixed "
-        "stream; long warm sequential streams reach ~113 GB/s (93%), so "
-        "treating 105.6 as the rate is conservative by up to ~13%."),
+        "STEADY-STATE figure (16 sustained generators); ceiling-"
+        "insensitive: 106.6 remeasured at an exact-121 link stage. "
+        "MoE fetch streams run faster -- see cxl3_x16_121_fetch."),
+    "cxl3_x16_121_fetch": Param(
+        114.5, "GB/s", "measured: moe_replay fetch streams, n=15 points, "
+        "94.6%", "measured",
+        "Expert-fetch traffic (large sequential bursts, deep FIFOs) "
+        "saturates the link where the steady-state mix does not. Fitted "
+        "by per-point bisection on the barrier recurrence against gem5 "
+        "replays at an exact-121 GB/s link stage (width 8 x 15.125 GHz; "
+        "round(121/16)=8 at 16 GHz gives a 128 GB/s stage that OVERSHOOTS "
+        "the FLIT-corrected nominal and must not be used). Fitted under "
+        "the per-expert arrival-gating recurrence (MODEL.md 5b): implied "
+        "113.8-114.9 across 15 points spanning 4 models, 3 capacities, "
+        "3 batch sizes and both dtypes -- a 1.1 GB/s spread. (The earlier "
+        "117.0, fitted under the superseded serial recurrence over 4 "
+        "points, spread 115.2-121.0; the better model tightened the fit "
+        "5x, which is part of why gating was adopted.) Use THIS value for "
+        "MoE expert traffic; keep 105.6 for mixed/steady workloads."),
 }
 
 
@@ -131,6 +144,18 @@ GPU = {
         stacks=Param(8, "count", "datasheet: 8 HBM3e stacks", "datasheet"),
     ),
 }
+
+# Per-layer-barrier host overhead (kernel launch + expert dispatch + sync),
+# serial with both roofline terms.  BRACKETED, not fitted: a CUDA kernel
+# launch costs ~3-10 us, a decode layer runs ~10-15 kernels, and CUDA-graph
+# capture (vLLM / TensorRT-LLM practice) amortises the sequence to
+# ~5-20 us/layer.  The Phase-1 RTX 4070 timings are an upper-bound
+# consistency check only -- transformers' Python expert loop inflates them
+# ~5x (data/README.md), so fitting to them would import a framework artifact.
+# Sweep [5, 40]; report compute-floor-sensitive conclusions across it.
+T0_LAYER = Param(20.0, "us", "bracketed [5, 40]: CUDA launch latency x "
+                 "kernels/layer, CUDA-graph amortisation", "ESTIMATE",
+                 "swept; enters model t_layer as t0_s")
 
 
 def gpu_per_stack_gbps(name: str) -> float:
@@ -179,8 +204,13 @@ HBM = {
                         "spec"),
         peak=Param(819.2, "GB/s/stack", "derived: 64b x 6.4Gbps x 16 / 8",
                    "derived"),
-        achieved=Param(736.6, "GB/s/stack", "measured: docs/CALIBRATION.md", "measured",
-                       "86% of peak; H100 datasheet implies 670 GB/s/stack"),
+        achieved=Param(736.6, "GB/s/stack", "measured: sim/README.md", "measured",
+                       "86% of peak; H100 datasheet implies 670 GB/s/stack. "
+                       "Re-measured after the idle-gap dilution fix "
+                       "(smoke_hbm --idle-ns default 1000 -> 0): gem5 divides "
+                       "bwRead by TOTAL simulated time, so the 1 us idle tail "
+                       "put the old figure 4.8% low. Corroborated independently "
+                       "by moe_replay, which implies 739.6 GB/s (0.4%)."),
         capacity=Param(16, "GB/stack", "spec: 8-high, 16Gb dies", "spec"),
     ),
     "HBM3e": dict(
@@ -191,7 +221,7 @@ HBM = {
         data_rate=Param(9.6, "Gbps/pin", "spec: HBM3E top bin", "spec"),
         peak=Param(1228.8, "GB/s/stack", "derived: 64b x 9.6Gbps x 16 / 8",
                    "derived"),
-        achieved=Param(1072.1, "GB/s/stack", "measured: docs/CALIBRATION.md",
+        achieved=Param(1072.1, "GB/s/stack", "measured: sim/README.md",
                        "measured", "84% of peak"),
         capacity=Param(24, "GB/stack", "spec: 8-high, 24Gb dies", "spec"),
     ),
@@ -221,8 +251,28 @@ CXL_PATH = dict(
                        "datasheet"),
     silicon_fpga=Param(375, "ns", "CXL-DMSim Table II, real CXL FPGA",
                        "datasheet"),
-    our_added_asic=Param(161.2, "ns", "measured: docs/CALIBRATION.md", "measured",
+    our_added_asic=Param(161.2, "ns", "measured: sim/README.md", "measured",
                          "vs silicon 154 ns, +4.7%"),
+    # Little's-law buffering cap, now a MODELLED MECHANISM rather than a
+    # caveat: eff_link = min(fetch_rate, 8 bridges * entries * 64 B / RTT).
+    # analytical/trace_gen.py --fifo-entries applies it.
+    fifo_rtt_deep=Param(280, "ns", "loaded RTT, 128-entry FIFOs", "measured",
+                        "used for the per-transfer latency term; at 128 "
+                        "entries the cap (234 GB/s) is inert above the "
+                        "117 GB/s fetch rate, so deep-FIFO CXL3 is "
+                        "link-bound, not buffer-bound"),
+    fifo_rtt_shallow=Param(242, "ns", "fitted: gem5 replays with real "
+                           "48-entry bridges, n=2", "measured",
+                           "SHALLOWER than the deep-FIFO 280 ns -- a "
+                           "48-entry window queues less and turns over "
+                           "faster. Bisection implies 239.3 / 245.3 ns "
+                           "(OLMoE / Mixtral) -> cap 101.4 GB/s measured "
+                           "vs 101.6 predicted. Replay ratios close from "
+                           "0.865/0.884 to 0.990/1.013. NOTE this "
+                           "supersedes the old '48 entries cap CXL3 at "
+                           "~86 GB/s (71%)' figure, which was a "
+                           "SUSTAINED-traffic measurement; fetch streams "
+                           "reach ~101 GB/s (84%) on the same buffers."),
 )
 
 
@@ -295,8 +345,9 @@ ENERGY = {
         "values to vendor datasheets (Table 90 empty by design). HBM3e held "
         "EQUAL per bit (conservative; vendor claims better). No "
         "generation-relative HBM energy claims are made, by construction. "
-        "UNITS: DRAMsim3 energy stats are V*mA*cycles, not pJ; "
-        "multiply by tCK (see measure_energy.py)."),
+        "UNIT TRAP: DRAMsim3 energy stats are V*mA*cycles, not pJ; "
+        "multiply by tCK (see measure_energy.py) -- the pre-fix 3.885 "
+        "'pJ/bit' figure was this unit error."),
     "ddr5_expander_measured": Param(
         11.85, "pJ/bit", "measured: sim/measure_energy.py, DDR5-6400 "
         "subchannel, sequential; IDD currents are Micron 16Gb DDR5 die "

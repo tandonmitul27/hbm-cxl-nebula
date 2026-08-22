@@ -23,15 +23,17 @@ PY      ?= python3
 JOBS    ?= $(shell nproc 2>/dev/null || echo 4)
 
 # libdramsim3.so lives beside the DRAMsim3 sources; conda users also need
-# their own lib dir on the path for zlib/protobuf.
-export LD_LIBRARY_PATH := $(HOME)/miniconda3/lib:$(DRAMSIM):$(LD_LIBRARY_PATH)
+# their own lib dir on the path for zlib/protobuf.  Applied per-recipe, NOT
+# exported globally: conda's libtinfo ahead of the system one makes every
+# shell in every recipe (including plain `echo`) emit a version warning.
+LIBS = LD_LIBRARY_PATH=$(HOME)/miniconda3/lib:$(DRAMSIM):$$LD_LIBRARY_PATH
 
 # Harnesses are invoked from the gem5 root: DRAMsim3 config paths inside
 # them are relative to it.
-RUN = cd $(GEM5) && $(BIN)
+RUN = cd $(GEM5) && $(LIBS) $(BIN)
 
 .PHONY: help setup check check-fast params addrmap energy bw-channel \
-        bw-stack cxl-latency cxl-bandwidth clean
+        bw-stack cxl-latency cxl-bandwidth model sweep confidence routing clean
 
 help:
 	@echo ""
@@ -39,6 +41,12 @@ help:
 	@echo ""
 	@echo "  make check          full validation suite   (~5 min)"
 	@echo "  make check-fast     skips full-stack runs   (~2 min)"
+	@echo "  make routing        verify the shipped routing logs"
+	@echo ""
+	@echo "  -- analytical model (docs/MODEL.md) --"
+	@echo "  make model          one operating point, timing + energy"
+	@echo "  make sweep          the full grid -> results/sweep.parquet (~30 min)"
+	@echo "  make confidence     accuracy / sensitivity / coverage of the model"
 	@echo ""
 	@echo "  make params         print every parameter with its provenance"
 	@echo "  make addrmap        print the static HBM/CXL map for each model"
@@ -49,7 +57,8 @@ help:
 	@echo "  make cxl-bandwidth  effective bandwidth of the CXL 2.0 x16 link"
 	@echo "  make energy         pJ/bit for HBM3, HBM3E and the DDR5 media"
 	@echo ""
-	@echo "  MODEL=<tag> HBM=<gib> selects the model for addrmap"
+	@echo "  MODEL=<tag> HBM=<gib> selects the model for addrmap and model"
+	@echo "  BATCH=<n> POLICY=<p> PHASE=<decode|prefill> GPU=<H100|H200|B200>"
 	@echo ""
 
 setup:
@@ -60,10 +69,32 @@ $(BIN):
 
 # --- validation ------------------------------------------------------------
 check: $(BIN)
-	$(PY) sim/check.py
+	$(LIBS) $(PY) sim/check.py
 
 check-fast: $(BIN)
-	$(PY) sim/check.py --fast
+	$(LIBS) $(PY) sim/check.py --fast
+
+# --- analytical model ------------------------------------------------------
+# Needs no gem5: the recurrence consumes the constants the harnesses above
+# measured. gem5 is the calibration and validation source, not the evaluator.
+BATCH  ?= 16
+POLICY ?= static
+PHASE  ?= decode
+DTYPE  ?= fp16
+GPU    ?= H100
+model:
+	$(PY) analytical/trace_gen.py --tag $(MODEL) --batch $(BATCH) \
+	  --hbm-gib $(HBM) --policy $(POLICY) --phase $(PHASE) \
+	  --dtype $(DTYPE) --gpu $(GPU)
+
+sweep:
+	$(PY) analytical/sweep.py
+
+confidence:
+	$(PY) docs/confidence_analysis.py
+
+routing:
+	$(PY) data/check_routing.py
 
 # --- reference tables ------------------------------------------------------
 params:
@@ -110,7 +141,7 @@ cxl-bandwidth: $(BIN)
 	  $(ROOT)/out/cxl-bw/stats.txt
 
 energy: $(BIN)
-	$(PY) sim/measure_energy.py --config HBM3_16Gb_x64_1ch \
+	$(LIBS) $(PY) sim/measure_energy.py --config HBM3_16Gb_x64_1ch \
 	                            --config HBM3e_24Gb_x64_1ch \
 	                            --config DDR5_6400_4Gb_x8
 

@@ -1,42 +1,4 @@
-"""Far-tier (CXL Type-3 memory expander) harness.
-
-===========================================================================
- @tandonmitul27  --  AUTHORED FILE (new; reproduces a published CXL model
-                     on vanilla gem5 rather than forking it)
-===========================================================================
-
-WHY THIS FILE EXISTS
-    There is no CXL device model in vanilla gem5.  The published one
-    (CXL-DMSim / SimCXL) is a FORK of gem5 23.1, so it cannot be combined
-    with 25.1, and adopting it would have stranded this work on an old
-    gem5 permanently.  This file instead REPRODUCES that model's
-    published parameters on stock gem5 SimObjects -- which is why the
-    repo can track upstream gem5 and still claim a silicon-calibrated
-    CXL path.
-
-THE THREE DESIGN DECISIONS THAT MATTER
-    1. The link is a SINGLE-PORT crossbar.  gem5's XBar `width` is PER
-       PORT, so a multi-port crossbar models a switch, not a serial
-       link.  Aggregate first, then cross one serialising layer -- only
-       then does --link-gbps mean what it says.
-    2. Protocol cost lives in per-channel Bridges: 50 ns bridge + 12 ns
-       host protocol + 15 ns device protocol, paid EACH direction, so
-       154 ns round trip by construction.  --dev-proto-ns 60 selects the
-       FPGA-class device instead of the ASIC.
-    3. --no-link builds the SAME topology with the link uncapped and
-       protocol zeroed.  It is a control, not a bypass: skipping the
-       bridges would give the baseline LESS buffering than the CXL path,
-       which gains FIFO entries per bridge.  Identical topology cancels
-       the harness's own limits in the ratio.
-
-USAGE -- run from the gem5 root
-    build/NULL/gem5.opt ../sim/configs/cxl_tier.py --link-gbps 63
-    build/NULL/gem5.opt ../sim/configs/cxl_tier.py --no-link   # control
-    `make cxl-latency` wraps the silicon-comparison pair.
-===========================================================================
-
-Original design notes follow.
----------------------------------------------------------------------------
+"""CXL Type-3 memory expander tier, trace-driven.
 
 System: the **GPU is the CXL host** (project clarification).  It has HBM on
 package and a CXL link to a memory expander -- ONE hop, not the two-hop
@@ -83,8 +45,8 @@ directly.  Reference points:
     PCIe 6.0 x16   ~121 GB/s  (CXL 3.0)
 
 Run from the gem5 root:
-    build/NULL/gem5.opt ../configs/cxl_tier.py --link-gbps 63
-    build/NULL/gem5.opt ../configs/cxl_tier.py --local-ddr   # latency baseline
+    build/NULL/gem5.opt ../sim/configs/cxl_tier.py --link-gbps 63
+    build/NULL/gem5.opt ../sim/configs/cxl_tier.py --local-ddr   # latency baseline
 """
 
 import argparse

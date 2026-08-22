@@ -1,3 +1,24 @@
+> ## ⚠️ STALE — superseded by [MODEL.md](MODEL.md)
+>
+> This document is kept for its derivations and its framing of the
+> optimisation levers. **Its constants are pre-calibration and must not be
+> quoted.** Every hardware value in §1.1 was later corrected by the gem5
+> replay campaign, and the background-power term was replaced outright:
+>
+> | here | corrected | why |
+> |---|---|---|
+> | `B_hbm1` 707.8 GB/s | **736.6** | a 1 µs idle tail diluted the measurement window by 4.8% |
+> | HBM3E 1027.3 GB/s | **1072.1** | same dilution |
+> | `B_HBM` 3539 GB/s, `α` 69.8 | **3683**, `α` 72.6 | follows from the above |
+> | PCIe4 23.5 GB/s | **24.9** | the link stage was measuring its own crossbar ceiling |
+> | CXL3 86 / 105.6 GB/s | **114.5** | stage overshot the FLIT-corrected nominal; refitted for fetch traffic |
+> | `P_hbm_ch` 0.252 W/ch flat | **state-resolved** | `P_ref + u·P_act_stb + (1−u)·P_pre_stb`; the flat value over-charged stall-dominated runs by ~13% |
+>
+> The model described here is also now *implemented* (`analytical/`) and validated
+> against gem5 at 103 operating points. For the equations as built, their
+> provenance and their measured accuracy, read
+> **[MODEL.md](MODEL.md)** and **[VALIDATION_CAMPAIGN.md](VALIDATION_CAMPAIGN.md)**.
+
 # Analytical model for the HBM + CXL two-tier MoE memory system
 
 Companion to `tandonmitul27/hbm-cxl-nebula`. This document defines the closed-form

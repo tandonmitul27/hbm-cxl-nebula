@@ -1,0 +1,39 @@
+diff --git a/src/cpu/testers/traffic_gen/base.cc b/src/cpu/testers/traffic_gen/base.cc
+index be02e6e..3ff69a6 100644
+--- a/src/cpu/testers/traffic_gen/base.cc
++++ b/src/cpu/testers/traffic_gen/base.cc
+@@ -168,6 +168,17 @@ BaseTrafficGen::unserialize(CheckpointIn &cp)
+ void
+ BaseTrafficGen::update()
+ {
++    // Local patch (moe_replay co-simulation): when a trace is re-started
++    // from Python while a packet of the previous trace is still blocked on
++    // back-pressure, start() arms updateEvent with retryPkt outstanding.
++    // Issuing another packet through the same port would violate the XBar
++    // waiting-list invariant (xbar.cc tryTiming assert).  Defer entirely:
++    // the pending retry resumes the (new) generator via retryReq() ->
++    // scheduleUpdate() on success.  Unreachable in vanilla configurations,
++    // which never schedule updateEvent while a retry is pending.
++    if (retryPkt != NULL)
++        return;
++
+     // shift our progress-tracking event forward
+     reschedule(noProgressEvent, curTick() + progressCheck, true);
+ 
+@@ -275,7 +286,15 @@ BaseTrafficGen::scheduleUpdate()
+ 
+     // The next transition tick may be in the past if there was a
+     // retry, so ensure that we don't schedule anything in the past.
+-    schedule(updateEvent, std::max(curTick(), nextEventTick));
++    //
++    // Local patch (moe_replay co-simulation): use reschedule(..., true)
++    // instead of schedule().  When a trace is re-started from Python while
++    // a packet of the previous trace is still blocked on back-pressure,
++    // the retry path re-enters here with updateEvent already scheduled by
++    // the new trace's start(); vanilla schedule() asserts.  For a single
++    // start() per generator (vanilla use) the event is never scheduled
++    // here, so this is behaviour-identical for stock configurations.
++    reschedule(updateEvent, std::max(curTick(), nextEventTick), true);
+ }
+ 
+ void

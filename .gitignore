@@ -1,7 +1,10 @@
 # @tandonmitul27 -- gem5 and DRAMsim3 are fetched and built by setup.sh,
 # never committed: the built tree is ~5 GB, and vendoring upstream source
 # would hide our changes (which live in patches/ and configs/ instead).
-/gem5/
+# no trailing slash: setup.sh makes a directory here, but a developer
+# pointing at an existing build makes a SYMLINK, and "/gem5/" matches only
+# the former -- the symlink would be committed.
+/gem5
 
 # run outputs
 /out/
@@ -9,3 +12,12 @@
 __pycache__/
 m5out/
 stats.txt
+
+# Generated outputs: 'make sweep' rebuilds these in ~30 min. Committing them
+# means a stale copy silently outlives any change to the model.
+/results/*.parquet
+
+# data/routing/ IS tracked, deliberately. The logs are input, not output:
+# they cannot be rebuilt without the checkpoints (87 GiB for Mixtral) and a
+# GPU, and nothing in analytical/ runs without them. 43 MB is the price of a
+# repository that works on clone.
